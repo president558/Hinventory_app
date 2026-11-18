@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>おうちストック｜家庭向け 備品・食材管理アプリ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background-color: #f8fafc;
+      color: #1e293b;
+      -webkit-tap-highlight-color: transparent;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes pulse-soft {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.65; }
+    }
+    .animate-pulse-soft { animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff !important; padding: 0 !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- ヘッダー（レスポンシブ2段対応・上部見切れ防止） -->
+  <header class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md sticky top-0 z-30 no-print">
+    <div class="max-w-4xl mx-auto px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">🏠</span>
+        <div>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <h1 class="text-base sm:text-lg font-black tracking-tight leading-tight">おうちストック管理</h1>
+            <button onclick="openChangelogModal()" class="bg-white/20 hover:bg-white/30 active:scale-95 transition text-white text-[10px] font-black px-2 py-0.5 rounded-full border border-white/30 flex items-center gap-1">
+              <span>🆕 v1.1 更新履歴</span>
+            </button>
+          </div>
+          <p class="text-[11px] text-emerald-100 leading-none mt-0.5">食材・日用品・防災備蓄のワンタップ在庫簿</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <button onclick="openScannerModal('search')" class="bg-white text-emerald-800 hover:bg-emerald-50 active:scale-95 transition px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">
+          <span>📷</span><span>バーコード読取</span>
+        </button>
+        <button onclick="openItemModal()" class="bg-amber-400 text-slate-900 hover:bg-amber-300 active:scale-95 transition px-3 py-1.5 rounded-xl text-xs font-black shadow-sm flex items-center gap-1">
+          <span>＋</span><span>品目追加</span>
+        </button>
+        <button onclick="openSettingsModal()" class="bg-emerald-800/70 hover:bg-emerald-800 active:scale-95 transition p-1.5 rounded-xl text-xs font-bold" title="設定・シート連携">
+          ⚙️
+        </button>
+      </div>
+    </div>
+
+    <!-- ダッシュボード KPI サマリー -->
+    <div class="max-w-4xl mx-auto px-3 pb-2.5 grid grid-cols-3 gap-2">
+      <button onclick="setFilterStatus('all')" id="kpi-all" class="bg-white/15 hover:bg-white/25 backdrop-blur-sm rounded-xl p-2 text-left transition border border-white/20">
+        <div class="text-[10px] text-emerald-100 font-bold">登録品目</div>
+        <div class="text-lg sm:text-xl font-black leading-tight"><span id="stat-total">0</span><span class="text-xs font-normal ml-0.5">品</span></div>
+      </button>
+      <button onclick="setFilterStatus('low')" id="kpi-low" class="bg-rose-500/90 hover:bg-rose-500 rounded-xl p-2 text-left transition shadow-sm border border-rose-300/40">
+        <div class="text-[10px] text-rose-100 font-bold">🛒 買い物必要</div>
+        <div class="text-lg sm:text-xl font-black leading-tight"><span id="stat-low">0</span><span class="text-xs font-normal ml-0.5">品</span></div>
+      </button>
+      <button onclick="setFilterStatus('expiring')" id="kpi-exp" class="bg-amber-500/90 hover:bg-amber-500 rounded-xl p-2 text-left transition shadow-sm border border-amber-300/40">
+        <div class="text-[10px] text-amber-950 font-bold">⏰ 期限ちかい</div>
+        <div class="text-lg sm:text-xl font-black text-slate-950 leading-tight"><span id="stat-exp">0</span><span class="text-xs font-normal ml-0.5">品</span></div>
+      </button>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 max-w-4xl w-full mx-auto px-3 py-3 space-y-3">
+
+    <!-- タブナビゲーション -->
+    <div class="grid grid-cols-3 bg-slate-200/80 p-1 rounded-2xl gap-1 no-print">
+      <button onclick="switchTab('stock')" id="tab-stock" class="py-2 rounded-xl text-xs sm:text-sm font-black bg-white text-emerald-700 shadow-sm transition">
+        📦 在庫一覧
+      </button>
+      <button onclick="switchTab('shopping')" id="tab-shopping" class="py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition relative">
+        🛒 買い物リスト
+        <span id="badge-shopping" class="hidden ml-1 bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+      </button>
+      <button onclick="switchTab('history')" id="tab-history" class="py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition">
+        🕒 消費・補充ログ
+      </button>
+    </div>
+
+    <!-- ==================== タブ1: 在庫一覧 ==================== -->
+    <section id="view-stock" class="space-y-3">
+      <!-- 検索・家族メンバー切替・保管場所フィルタ -->
+      <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200/80 space-y-2.5 no-print">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative flex-1 min-w-[180px]">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            <input type="text" id="search-input" oninput="renderStockList()" placeholder="品名・メモ・保管場所で検索..." class="w-full pl-9 pr-8 py-2 bg-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <button onclick="clearSearch()" id="btn-clear-search" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
+          </div>
+          <!-- 記録者（家族メンバー）ワンタップ選択 -->
+          <button onclick="openMemberModal()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0">
+            <span>👤</span>
+            <span id="current-member-label">記録者: 家族</span>
+          </button>
+        </div>
+
+        <!-- カテゴリチップ（横スクロール） -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5" id="category-chips">
+          <!-- JSで動的生成 -->
+        </div>
+
+        <!-- 状態フィルタ・並び替え -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+          <div class="flex items-center gap-1 flex-wrap">
+            <button onclick="setFilterStatus('all')" id="flt-all" class="px-2.5 py-1 rounded-lg font-bold bg-slate-800 text-white">すべて</button>
+            <button onclick="setFilterStatus('low')" id="flt-low" class="px-2.5 py-1 rounded-lg font-bold bg-slate-100 text-slate-600">⚠️ 補充必要</button>
+            <button onclick="setFilterStatus('expiring')" id="flt-exp" class="px-2.5 py-1 rounded-lg font-bold bg-slate-100 text-slate-600">⏰ 期限注意</button>
+          </div>
+          <select id="sort-select" onchange="renderStockList()" class="bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded-lg text-xs focus:outline-none">
+            <option value="alert">優先度順（不足・期限順）</option>
+            <option value="category">カテゴリ・保管場所順</option>
+            <option value="expiry">賞味・消費期限が近い順</option>
+            <option value="name">名前順</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 在庫カード一覧 -->
+      <div id="stock-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <!-- JSで描画 -->
+      </div>
+    </section>
+
+    <!-- ==================== タブ2: 買い物リスト ==================== -->
+    <section id="view-shopping" class="hidden space-y-3">
+      <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-black text-slate-800 flex items-center gap-1.5">
+              <span>🛒</span><span>自動生成 買い物リスト</span>
+            </h2>
+            <p class="text-xs text-slate-500">目標ストック数に満たない品目が自動で並びます</p>
+          </div>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button onclick="copyShoppingText()" class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1">
+              <span>📋</span><span>コピー</span>
+            </button>
+            <button onclick="shareLineShopping()" class="bg-[#06C755] hover:opacity-90 active:scale-95 text-white px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm">
+              <span>💬</span><span>LINEで家族に送る</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 買い物リスト本体 -->
+        <div id="shopping-list-container" class="divide-y divide-slate-100">
+          <!-- JSで描画 -->
+        </div>
+
+        <!-- まとめて補充（買い出し完了）ボタン -->
+        <div id="shopping-bulk-actions" class="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+          <p class="text-xs text-slate-500">チェックした品目をまとめて在庫に補充できます</p>
+          <button onclick="bulkRestockChecked()" class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-4 py-2.5 rounded-xl text-sm font-black shadow-sm flex items-center justify-center gap-1.5">
+            <span>✅</span><span>チェックした品目をまとめて補充！</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 買い物テキストプレビュー -->
+      <div class="bg-slate-100 p-3 rounded-2xl border border-slate-200">
+        <div class="text-xs font-bold text-slate-600 mb-1">📱 LINE・メモ共有用テキストプレビュー</div>
+        <textarea id="shopping-preview-text" rows="5" readonly class="w-full bg-white p-2.5 rounded-xl text-xs text-slate-700 border border-slate-200 focus:outline-none"></textarea>
+      </div>
+    </section>
+
+    <!-- ==================== タブ3: 消費・補充ログ ==================== -->
+    <section id="view-history" class="hidden space-y-3">
+      <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-black text-slate-800">🕒 最近の消費・補充履歴</h2>
+            <p class="text-xs text-slate-500">直近100件の出し入れ記録（GAS連携時はシートへ自動保存）</p>
+          </div>
+          <button onclick="clearHistoryLogs()" class="text-xs text-rose-600 hover:underline font-bold">履歴クリア</button>
+        </div>
+        <div id="history-list" class="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto">
+          <!-- JSで描画 -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- フッター（更新履歴リンク） -->
+  <footer class="max-w-4xl w-full mx-auto px-3 pt-2 pb-6 text-center no-print">
+    <button onclick="openChangelogModal()" class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-emerald-700 bg-white border border-slate-200 px-3.5 py-2 rounded-full shadow-2xs transition">
+      <span>📋</span><span>アプリの更新履歴（リリースノート）を見る (v1.1)</span>
+    </button>
+  </footer>
+
+  <!-- 右下フローティング「⬆️ TOPへ戻る」ボタン -->
+  <button id="btn-back-to-top" onclick="scrollToTop()" aria-label="一番上へ戻る"
+    style="bottom: calc(1.25rem + env(safe-area-inset-bottom));"
+    class="fixed right-4 z-40 w-12 h-12 rounded-full bg-emerald-600 text-white shadow-lg border-2 border-white flex flex-col items-center justify-center opacity-0 pointer-events-none transition-all duration-300 active:scale-90 no-print">
+    <span class="text-sm leading-none font-black">⬆️</span>
+    <span class="text-[9px] font-black tracking-tighter">TOP</span>
+  </button>
+
+  <!-- ==================== モーダル1: 品目追加・編集 ==================== -->
+  <div id="item-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+      <div class="px-5 py-3.5 bg-emerald-600 text-white flex items-center justify-between shrink-0">
+        <h3 id="item-modal-title" class="font-black text-base">📦 新しい備品・食材を登録</h3>
+        <button onclick="closeModal('item-modal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <form id="item-form" onsubmit="saveItem(event)" class="p-4 space-y-3.5 overflow-y-auto flex-1">
+        <input type="hidden" id="edit-item-id" />
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">品名 <span class="text-rose-500">*</span></label>
+          <input type="text" id="inp-name" required placeholder="例：牛乳、トイレットペーパー、単3電池" class="w-full px-3.5 py-2.5 bg-slate-100 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">カテゴリ</label>
+            <select id="inp-category" class="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <option value="冷蔵・生鮮">🥛 冷蔵・生鮮</option>
+              <option value="冷凍食品">🧊 冷凍食品</option>
+              <option value="常温食材・調味料">🥫 常温食材・調味料</option>
+              <option value="飲料・お酒">🧃 飲料・お酒</option>
+              <option value="日用品・消耗品">🧻 日用品・消耗品</option>
+              <option value="キッチン・掃除">🧼 キッチン・掃除</option>
+              <option value="薬・衛生用品">🩹 薬・衛生用品</option>
+              <option value="防災備蓄">🎒 防災備蓄</option>
+              <option value="ペット・ベビー">🐾 ペット・ベビー</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">保管場所</label>
+            <input type="text" id="inp-location" list="location-suggestions" placeholder="例：冷蔵庫、洗面所下" class="w-full px-3.5 py-2.5 bg-slate-100 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <datalist id="location-suggestions">
+              <option value="冷蔵庫"></option>
+              <option value="冷凍庫"></option>
+              <option value="パントリー・食品庫"></option>
+              <option value="キッチン下"></option>
+              <option value="洗面所・脱衣所"></option>
+              <option value="トイレ収納"></option>
+              <option value="リビング収納"></option>
+              <option value="玄関・防災リュック"></option>
+            </datalist>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">現在の在庫数</label>
+            <input type="number" id="inp-qty" min="0" step="1" value="1" required class="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-base font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">補充ライン(目標)</label>
+            <input type="number" id="inp-min" min="0" step="1" value="1" required class="w-full px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-base font-black text-center focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">単位</label>
+            <input type="text" id="inp-unit" list="unit-suggestions" value="個" placeholder="個/本/袋" class="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <datalist id="unit-suggestions">
+              <option value="個"></option>
+              <option value="本"></option>
+              <option value="袋"></option>
+              <option value="箱"></option>
+              <option value="パック"></option>
+              <option value="ロール"></option>
+              <option value="枚"></option>
+              <option value="缶"></option>
+            </datalist>
+          </div>
+        </div>
+        <p class="text-[11px] text-slate-500 -mt-2">※在庫数が「補充ライン」以下になると自動で買い物リストに入ります</p>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">賞味・消費期限（任意）</label>
+            <input type="date" id="inp-expiry" class="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">JANバーコード（任意）</label>
+            <div class="flex gap-1">
+              <input type="text" id="inp-barcode" placeholder="読取または手入力" class="w-full px-2.5 py-2.5 bg-slate-100 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              <button type="button" onclick="openScannerModal('register')" class="bg-slate-800 text-white px-2.5 rounded-xl text-xs font-bold shrink-0">📷</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">買うお店・メーカーメモ（任意）</label>
+          <input type="text" id="inp-note" placeholder="例：〇〇スーパーが安い、無香料タイプ" class="w-full px-3.5 py-2 bg-slate-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </div>
+
+        <div class="pt-2 flex items-center justify-between gap-2">
+          <button type="button" id="btn-delete-item" onclick="deleteCurrentItem()" class="hidden px-3.5 py-2.5 rounded-xl bg-rose-50 text-rose-600 font-bold text-xs hover:bg-rose-100">🗑️ 削除</button>
+          <div class="flex items-center gap-2 ml-auto">
+            <button type="button" onclick="closeModal('item-modal')" class="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs">キャンセル</button>
+            <button type="submit" class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md">保存する</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== モーダル2: カメラバーコード・QR読取 ==================== -->
+  <div id="scanner-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+      <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0">
+        <h3 class="font-black text-sm flex items-center gap-1.5"><span>📷</span><span id="scanner-title">バーコード・QRスキャン</span></h3>
+        <button onclick="closeScannerModal()" class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div class="p-4 space-y-3 overflow-y-auto">
+        <div id="qr-reader" class="w-full rounded-2xl overflow-hidden bg-black min-h-[240px]"></div>
+        <p id="scanner-status" class="text-xs text-center text-slate-600 font-bold">カメラを起動しています...商品のバーコードを枠内に映してください</p>
+        <div class="pt-1 border-t border-slate-100">
+          <label class="block text-[11px] text-slate-500 mb-1">カメラが使えない場合は番号を手入力：</label>
+          <div class="flex gap-1.5">
+            <input type="text" id="manual-barcode-input" placeholder="バーコード数字を入力" class="flex-1 px-3 py-2 bg-slate-100 rounded-xl text-xs font-mono" />
+            <button onclick="handleScannedCode(document.getElementById('manual-barcode-input').value)" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-bold">確定</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== モーダル3: 家族メンバー（記録者）選択・登録 ==================== -->
+  <div id="member-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+      <div class="px-4 py-3 bg-emerald-600 text-white flex items-center justify-between shrink-0">
+        <h3 class="font-black text-sm">👤 記録者（家族メンバー）選択</h3>
+        <button onclick="closeModal('member-modal')" class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div class="p-4 space-y-3 overflow-y-auto">
+        <p class="text-xs text-slate-500">誰が消費・補充したかをワンタップで記録できます。</p>
+        <div id="member-list" class="space-y-1.5"></div>
+        <div class="flex gap-1.5 pt-2 border-t border-slate-100">
+          <input type="text" id="new-member-input" placeholder="新しい名前（例：パパ、ママ）" class="flex-1 px-3 py-2 bg-slate-100 rounded-xl text-xs font-bold" />
+          <button onclick="addMember()" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-bold">＋追加</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== モーダル4: 設定・Googleスプレッドシート連携・バックアップ ==================== -->
+  <div id="settings-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+      <div class="px-5 py-3.5 bg-slate-800 text-white flex items-center justify-between shrink-0">
+        <h3 class="font-black text-base">⚙️ 設定・クラウド連携・バックアップ</h3>
+        <button onclick="closeModal('settings-modal')" class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div class="p-4 space-y-4 overflow-y-auto text-xs">
+        <!-- Googleスプレッドシート連携（BYOD設計：初期URL空欄） -->
+        <div class="bg-emerald-50/70 border border-emerald-200 p-3.5 rounded-2xl space-y-2">
+          <div class="font-black text-emerald-900 text-sm flex items-center gap-1">
+            <span>☁️</span><span>Googleスプレッドシート自動蓄積（任意）</span>
+          </div>
+          <p class="text-slate-600 leading-relaxed">
+            ご自身のGoogleスプレッドシートにApps Scriptを貼り付けてURLを設定すると、消費・補充のたびに履歴と現在庫が自動保存され、家族のスマホ間やAppSheetでも確認できます。
+          </p>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">GAS ウェブアプリURL（初期空欄）</label>
+            <input type="url" id="gas-url-input" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2 bg-white border border-emerald-300 rounded-xl text-xs font-mono" />
+          </div>
+          <div class="flex flex-wrap gap-2 pt-1">
+            <button onclick="saveGasUrl()" class="bg-emerald-600 text-white px-3.5 py-2 rounded-xl font-bold">URLを保存</button>
+            <button onclick="syncAllToSheet()" class="bg-teal-700 text-white px-3.5 py-2 rounded-xl font-bold">🔄 現在庫を一括同期</button>
+            <button onclick="copyGasCode()" class="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-xl font-bold">📋 GASコードをコピー</button>
+          </div>
+        </div>
+
+        <!-- CSVエクスポート・インポート -->
+        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-2">
+          <div class="font-black text-slate-800 text-sm">💾 データバックアップ（CSV / サンプル初期化）</div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="exportCSV()" class="bg-slate-800 text-white px-3.5 py-2 rounded-xl font-bold">⬇️ CSVダウンロード</button>
+            <button onclick="resetToSampleData()" class="bg-white border border-rose-200 text-rose-600 px-3.5 py-2 rounded-xl font-bold">🔄 家庭向けサンプル品目を再読込</button>
+          </div>
+        </div>
+
+        <div class="text-[11px] text-slate-400 text-center pt-1">
+          おうちストック管理 v1.1 ｜ データはお使いの端末内に安全に自動保存されます
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== モーダル5: 更新履歴（リリースノート） ==================== -->
+  <div id="changelog-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
+      <div class="px-5 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex items-center justify-between shrink-0">
+        <h3 class="font-black text-base flex items-center gap-1.5"><span>📋</span><span>更新履歴（リリースノート）</span></h3>
+        <button onclick="closeModal('changelog-modal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div class="p-4 space-y-4 overflow-y-auto text-xs">
+        
+        <!-- v1.1 -->
+        <div class="relative pl-4 border-l-2 border-emerald-500 space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-full text-[10px]">NEW</span>
+            <span class="font-black text-sm text-slate-800">v1.1</span>
+            <span class="text-[11px] text-slate-400">2026/11/18</span>
+          </div>
+          <div class="font-bold text-emerald-800">更新履歴（リリースノート）表示機能を追加</div>
+          <ul class="list-disc list-inside text-slate-600 space-y-0.5 leading-relaxed">
+            <li>ヘッダー右上および画面下部から、いつでもアプリのアップデート履歴を確認できるモーダルを追加しました。</li>
+          </ul>
+        </div>
+
+        <!-- v1.0 -->
+        <div class="relative pl-4 border-l-2 border-slate-300 space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="font-black text-sm text-slate-700">v1.0</span>
+            <span class="text-[11px] text-slate-400">2026/11/18</span>
+          </div>
+          <div class="font-bold text-slate-700">家庭向け「おうちストック管理」初版リリース</div>
+          <ul class="list-disc list-inside text-slate-600 space-y-0.5 leading-relaxed">
+            <li>冷蔵・冷凍・日用品・薬・防災備蓄など9カテゴリと保管場所の整理に対応。</li>
+            <li>「− / ＋」大型ワンタップ操作と賞味・消費期限の自動アラートを搭載。</li>
+            <li>買い物リスト自動生成、LINE送信、チェック後の「まとめて補充」機能を実装。</li>
+            <li>スマホカメラでのJANバーコード読取＆Googleスプレッドシート連携（GAS）に対応。</li>
+          </ul>
+        </div>
+
+      </div>
+      <div class="p-3 bg-slate-50 border-t border-slate-100 text-right shrink-0">
+        <button onclick="closeModal('changelog-modal')" class="px-5 py-2 rounded-xl bg-slate-800 text-white font-bold text-xs">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-4 py-2.5 rounded-2xl text-xs font-bold shadow-xl opacity-0 pointer-events-none transition-opacity duration-300 whitespace-nowrap">
+    通知メッセージ
+  </div>
+
+  <script>
+    // ==================== 初期データ & 定数 ====================
+    const STORAGE_KEYS = {
+      ITEMS: 'home_pantry_items_v1',
+      LOGS: 'home_pantry_logs_v1',
+      MEMBERS: 'home_pantry_members_v1',
+      CURRENT_MEMBER: 'home_pantry_current_member_v1',
+      GAS_URL: 'home_pantry_gas_url_v1'
+    };
+
+    const CATEGORIES = [
+      { id: 'all', label: 'すべて', icon: '🏠' },
+      { id: '冷蔵・生鮮', label: '冷蔵・生鮮', icon: '🥛' },
+      { id: '冷凍食品', label: '冷凍食品', icon: '🧊' },
+      { id: '常温食材・調味料', label: '常温・調味料', icon: '🥫' },
+      { id: '飲料・お酒', label: '飲料・お酒', icon: '🧃' },
+      { id: '日用品・消耗品', label: '日用品', icon: '🧻' },
+      { id: 'キッチン・掃除', label: 'キッチン・掃除', icon: '🧼' },
+      { id: '薬・衛生用品', label: '薬・衛生', icon: '🩹' },
+      { id: '防災備蓄', label: '防災備蓄', icon: '🎒' },
+      { id: 'ペット・ベビー', label: 'ペット・ベビー', icon: '🐾' }
+    ];
+
+    function getFutureDate(days) {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      return d.toISOString().split('T')[0];
+    }
+
+    const SAMPLE_ITEMS = [
+      { id: 'it-1', name: '牛乳 (1000ml)', category: '冷蔵・生鮮', location: '冷蔵庫', qty: 1, min: 1, unit: '本', expiry: getFutureDate(4), barcode: '4901234567890', note: '特売日に2本買う' },
+      { id: 'it-2', name: '卵 (10個入り)', category: '冷蔵・生鮮', location: '冷蔵庫', qty: 0, min: 1, unit: 'パック', expiry: getFutureDate(7), barcode: '', note: '赤玉Lサイズ' },
+      { id: 'it-3', name: '冷凍うどん (5食入)', category: '冷凍食品', location: '冷凍庫', qty: 2, min: 1, unit: '袋', expiry: getFutureDate(60), barcode: '', note: '' },
+      { id: 'it-4', name: 'お米 (5kg)', category: '常温食材・調味料', location: 'パントリー・食品庫', qty: 1, min: 1, unit: '袋', expiry: '', barcode: '', note: '残り半分になったら買う' },
+      { id: 'it-5', name: '醤油 (1L)', category: '常温食材・調味料', location: 'キッチン下', qty: 1, min: 1, unit: '本', expiry: getFutureDate(180), barcode: '', note: '密封ボトル' },
+      { id: 'it-6', name: 'トイレットペーパー (12ロール)', category: '日用品・消耗品', location: 'トイレ収納', qty: 1, min: 1, unit: 'パック', expiry: '', barcode: '', note: 'ダブル・香りなし' },
+      { id: 'it-7', name: 'ボックスティッシュ (5箱組)', category: '日用品・消耗品', location: 'リビング収納', qty: 0, min: 1, unit: 'セット', expiry: '', barcode: '', note: '' },
+      { id: 'it-8', name: '食器用洗剤 (詰替用)', category: 'キッチン・掃除', location: 'キッチン下', qty: 2, min: 1, unit: '本', expiry: '', barcode: '', note: '' },
+      { id: 'it-9', name: '保存水 (2L×6本箱)', category: '防災備蓄', location: '玄関・防災リュック', qty: 2, min: 2, unit: '箱', expiry: getFutureDate(365), barcode: '', note: 'ローリングストック' },
+      { id: 'it-10', name: '常備薬・解熱鎮痛剤', category: '薬・衛生用品', location: 'リビング収納', qty: 1, min: 1, unit: '箱', expiry: getFutureDate(12), barcode: '', note: '使用期限チェック' }
+    ];
+
+    // ==================== 状態管理 ====================
+    let items = [];
+    let logs = [];
+    let members = ['パパ', 'ママ', '家族'];
+    let currentMember = '家族';
+    let currentTab = 'stock';
+    let filterCategory = 'all';
+    let filterStatus = 'all'; // 'all' | 'low' | 'expiring'
+    let html5QrCode = null;
+    let scannerMode = 'search'; // 'search' | 'register'
+
+    // ==================== 初期化 ====================
+    function init() {
+      const savedItems = localStorage.getItem(STORAGE_KEYS.ITEMS);
+      items = savedItems ? JSON.parse(savedItems) : JSON.parse(JSON.stringify(SAMPLE_ITEMS));
+      if (!savedItems) saveItemsToStorage();
+
+      const savedLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
+      logs = savedLogs ? JSON.parse(savedLogs) : [];
+
+      const savedMembers = localStorage.getItem(STORAGE_KEYS.MEMBERS);
+      if (savedMembers) members = JSON.parse(savedMembers);
+
+      const savedCurrentMember = localStorage.getItem(STORAGE_KEYS.CURRENT_MEMBER);
+      if (savedCurrentMember) currentMember = savedCurrentMember;
+
+      const savedGas = localStorage.getItem(STORAGE_KEYS.GAS_URL);
+      if (savedGas) document.getElementById('gas-url-input').value = savedGas;
+
+      renderCategoryChips();
+      updateMemberLabel();
+      refreshAll();
+      setupBackToTop();
+    }
+
+    function saveItemsToStorage() {
+      localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(items));
+    }
+
+    function saveLogsToStorage() {
+      if (logs.length > 100) logs = logs.slice(0, 100);
+      localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs));
+    }
+
+    function refreshAll() {
+      updateKPIs();
+      renderStockList();
+      renderShoppingList();
+      renderHistoryList();
+    }
+
+    // ==================== KPI & 期限判定 ====================
+    function getExpiryInfo(expiryStr) {
+      if (!expiryStr) return { status: 'none', days: 9999, label: '' };
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const exp = new Date(expiryStr);
+      exp.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) return { status: 'expired', days: diffDays, label: `期限切れ(${Math.abs(diffDays)}日超過)` };
+      if (diffDays === 0) return { status: 'soon', days: 0, label: '本日まで！' };
+      if (diffDays <= 7) return { status: 'soon', days: diffDays, label: `あと${diffDays}日` };
+      if (diffDays <= 30) return { status: 'warn', days: diffDays, label: `あと${diffDays}日` };
+      return { status: 'ok', days: diffDays, label: expiryStr.replace(/-/g, '/') };
+    }
+
+    function updateKPIs() {
+      const total = items.length;
+      const lowItems = items.filter(i => i.qty <= i.min);
+      const expItems = items.filter(i => {
+        const info = getExpiryInfo(i.expiry);
+        return info.status === 'expired' || info.status === 'soon';
+      });
+
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-low').textContent = lowItems.length;
+      document.getElementById('stat-exp').textContent = expItems.length;
+
+      const badge = document.getElementById('badge-shopping');
+      if (lowItems.length > 0) {
+        badge.textContent = lowItems.length;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    // ==================== カテゴリ・フィルタ ====================
+    function renderCategoryChips() {
+      const container = document.getElementById('category-chips');
+      container.innerHTML = CATEGORIES.map(cat => {
+        const active = filterCategory === cat.id;
+        return `<button onclick="setFilterCategory('${cat.id}')" class="shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${active ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+          <span>${cat.icon}</span><span>${cat.label}</span>
+        </button>`;
+      }).join('');
+    }
+
+    function setFilterCategory(catId) {
+      filterCategory = catId;
+      renderCategoryChips();
+      renderStockList();
+    }
+
+    function setFilterStatus(status) {
+      filterStatus = status;
+      if (currentTab !== 'stock') switchTab('stock');
+      ['all', 'low', 'exp'].forEach(k => {
+        const btn = document.getElementById('flt-' + k);
+        const isMatch = (k === 'all' && status === 'all') || (k === 'low' && status === 'low') || (k === 'exp' && status === 'expiring');
+        btn.className = isMatch
+          ? 'px-2.5 py-1 rounded-lg font-bold bg-slate-800 text-white'
+          : 'px-2.5 py-1 rounded-lg font-bold bg-slate-100 text-slate-600';
+      });
+      renderStockList();
+    }
+
+    function clearSearch() {
+      document.getElementById('search-input').value = '';
+      renderStockList();
+    }
+
+    // ==================== 在庫一覧描画 ====================
+    function renderStockList() {
+      const keyword = document.getElementById('search-input').value.trim().toLowerCase();
+      const clearBtn = document.getElementById('btn-clear-search');
+      if (keyword) clearBtn.classList.remove('hidden'); else clearBtn.classList.add('hidden');
+
+      let filtered = items.filter(item => {
+        if (filterCategory !== 'all' && item.category !== filterCategory) return false;
+        if (filterStatus === 'low' && item.qty > item.min) return false;
+        if (filterStatus === 'expiring') {
+          const info = getExpiryInfo(item.expiry);
+          if (info.status !== 'expired' && info.status !== 'soon') return false;
+        }
+        if (keyword) {
+          const hay = `${item.name} ${item.category} ${item.location} ${item.note} ${item.barcode}`.toLowerCase();
+          if (!hay.includes(keyword)) return false;
+        }
+        return true;
+      });
+
+      const sortMode = document.getElementById('sort-select').value;
+      filtered.sort((a, b) => {
+        if (sortMode === 'alert') {
+          const scoreA = (a.qty === 0 ? 100 : a.qty <= a.min ? 50 : 0) + (getExpiryInfo(a.expiry).days <= 7 ? 30 : 0);
+          const scoreB = (b.qty === 0 ? 100 : b.qty <= b.min ? 50 : 0) + (getExpiryInfo(b.expiry).days <= 7 ? 30 : 0);
+          return scoreB - scoreA;
+        } else if (sortMode === 'expiry') {
+          return getExpiryInfo(a.expiry).days - getExpiryInfo(b.expiry).days;
+        } else if (sortMode === 'category') {
+          return a.category.localeCompare(b.category, 'ja') || a.location.localeCompare(b.location, 'ja');
+        } else {
+          return a.name.localeCompare(b.name, 'ja');
+        }
+      });
+
+      const container = document.getElementById('stock-list');
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="col-span-full bg-white rounded-2xl p-8 text-center border border-slate-200">
+          <div class="text-3xl mb-2">📭</div>
+          <p class="text-sm font-bold text-slate-600">該当する品目がありません</p>
+          <button onclick="openItemModal()" class="mt-3 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold">＋ 新しい品目を登録する</button>
+        </div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => {
+        const isOut = item.qty === 0;
+        const isLow = item.qty > 0 && item.qty <= item.min;
+        const expInfo = getExpiryInfo(item.expiry);
+        const catObj = CATEGORIES.find(c => c.id === item.category) || { icon: '📦' };
+
+        let borderClass = 'border-slate-200';
+        let badgeHtml = '';
+        if (isOut) {
+          borderClass = 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/30';
+          badgeHtml += `<span class="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse-soft">❌ 在庫ゼロ</span>`;
+        } else if (isLow) {
+          borderClass = 'border-amber-400 bg-amber-50/20';
+          badgeHtml += `<span class="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full">🛒 要補充</span>`;
+        }
+
+        if (expInfo.status === 'expired') {
+          badgeHtml += `<span class="bg-purple-700 text-white text-[10px] font-black px-2 py-0.5 rounded-full">⚠️ ${expInfo.label}</span>`;
+        } else if (expInfo.status === 'soon') {
+          badgeHtml += `<span class="bg-orange-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">⏰ ${expInfo.label}</span>`;
+        } else if (expInfo.status === 'warn') {
+          badgeHtml += `<span class="bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full">期限: ${expInfo.label}</span>`;
+        }
+
+        return `<div class="bg-white rounded-2xl p-3.5 shadow-xs border ${borderClass} flex flex-col justify-between gap-2.5 transition">
+          <div>
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">${catObj.icon} ${item.category}</span>
+                ${item.location ? `<span class="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg">📍 ${escapeHtml(item.location)}</span>` : ''}
+              </div>
+              <button onclick="openItemModal('${item.id}')" class="text-slate-400 hover:text-slate-700 p-1 rounded-lg text-xs font-bold shrink-0" title="編集">✏️ 編集</button>
+            </div>
+
+            <div class="mt-1.5 flex items-center justify-between gap-2">
+              <h3 class="font-black text-base text-slate-800 leading-snug">${escapeHtml(item.name)}</h3>
+            </div>
+
+            ${badgeHtml ? `<div class="mt-1.5 flex items-center gap-1 flex-wrap">${badgeHtml}</div>` : ''}
+            ${item.note ? `<p class="mt-1 text-[11px] text-slate-500 truncate">📝 ${escapeHtml(item.note)}</p>` : ''}
+          </div>
+
+          <!-- ワンタップ在庫操作バー -->
+          <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+            <div class="text-xs text-slate-500">
+              補充ライン: <span class="font-bold text-slate-700">${item.min}${item.unit}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="adjustStock('${item.id}', -1)" class="w-10 h-10 rounded-xl bg-rose-100 hover:bg-rose-200 active:scale-90 text-rose-700 font-black text-lg flex items-center justify-center transition shadow-2xs" aria-label="1つ使う">
+                −
+              </button>
+              <div class="min-w-[3.5rem] text-center">
+                <span class="text-xl font-black ${isOut ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-slate-800'}">${item.qty}</span>
+                <span class="text-xs font-bold text-slate-500 ml-0.5">${item.unit}</span>
+              </div>
+              <button onclick="adjustStock('${item.id}', 1)" class="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-90 text-white font-black text-lg flex items-center justify-center transition shadow-xs" aria-label="1つ補充">
+                ＋
+              </button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // ==================== ワンタップ入出庫 & ログ記録 ====================
+    function adjustStock(id, delta) {
+      const idx = items.findIndex(i => i.id === id);
+      if (idx === -1) return;
+      const item = items[idx];
+      const nextQty = Math.max(0, item.qty + delta);
+      if (nextQty === item.qty && delta < 0) {
+        showToast('すでに在庫ゼロです');
+        return;
+      }
+      const actualDelta = nextQty - item.qty;
+      item.qty = nextQty;
+      saveItemsToStorage();
+
+      const actionLabel = actualDelta > 0 ? '補充' : '消費';
+      addLogEntry(item, actionLabel, actualDelta, nextQty);
+      refreshAll();
+      showToast(`${item.name}: ${actualDelta > 0 ? '+' + actualDelta : actualDelta}${item.unit}（残り ${nextQty}${item.unit}）`);
+    }
+
+    function addLogEntry(item, action, delta, afterQty) {
+      const now = new Date();
+      const timestamp = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const entry = {
+        id: 'log-' + Date.now(),
+        timestamp,
+        member: currentMember,
+        itemName: item.name,
+        category: item.category,
+        action,
+        delta,
+        afterQty,
+        unit: item.unit
+      };
+      logs.unshift(entry);
+      saveLogsToStorage();
+      sendLogToGas(entry);
+    }
+
+    // ==================== 買い物リスト ====================
+    function renderShoppingList() {
+      const lowItems = items.filter(i => i.qty <= i.min);
+      const container = document.getElementById('shopping-list-container');
+      const bulkBox = document.getElementById('shopping-bulk-actions');
+      const previewArea = document.getElementById('shopping-preview-text');
+
+      if (lowItems.length === 0) {
+        container.innerHTML = `<div class="py-8 text-center">
+          <div class="text-3xl mb-1">🎉</div>
+          <p class="text-sm font-black text-emerald-700">今すぐ買うべきものはありません！</p>
+          <p class="text-xs text-slate-400 mt-1">ストックはすべて十分に揃っています</p>
+        </div>`;
+        bulkBox.classList.add('hidden');
+        previewArea.value = '【おうち買い物リスト】\n現在、補充が必要なものはありません✨';
+        return;
+      }
+
+      bulkBox.classList.remove('hidden');
+      container.innerHTML = lowItems.map(item => {
+        const buySuggest = Math.max(1, (item.min - item.qty) + 1);
+        return `<label class="py-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 px-2 rounded-xl">
+          <div class="flex items-center gap-3">
+            <input type="checkbox" class="shop-check w-5 h-5 accent-emerald-600 rounded" data-id="${item.id}" data-buy="${buySuggest}" checked />
+            <div>
+              <div class="font-black text-sm text-slate-800">${escapeHtml(item.name)}</div>
+              <div class="text-[11px] text-slate-500">
+                現在庫: <span class="text-rose-600 font-bold">${item.qty}${item.unit}</span> / 目標: ${item.min}${item.unit}
+                ${item.note ? ` ・ 📝 ${escapeHtml(item.note)}` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0" onclick="event.preventDefault()">
+            <span class="text-[11px] text-slate-500">購入数:</span>
+            <input type="number" min="1" value="${buySuggest}" id="buy-qty-${item.id}" oninput="updateShoppingPreviewText()" class="w-14 py-1 px-1.5 bg-amber-50 border border-amber-300 rounded-lg text-center text-sm font-black text-slate-800" />
+            <span class="text-xs font-bold text-slate-600">${item.unit}</span>
+          </div>
+        </label>`;
+      }).join('');
+
+      updateShoppingPreviewText();
+    }
+
+    function updateShoppingPreviewText() {
+      const lowItems = items.filter(i => i.qty <= i.min);
+      if (lowItems.length === 0) return;
+      const today = new Date();
+      const dateStr = `${today.getMonth()+1}/${today.getDate()}`;
+      let lines = [`🛒【おうち買い物リスト】(${dateStr})`];
+      const grouped = {};
+      lowItems.forEach(item => {
+        if (!grouped[item.category]) grouped[item.category] = [];
+        const qtyInput = document.getElementById(`buy-qty-${item.id}`);
+        const buyQty = qtyInput ? qtyInput.value : 1;
+        grouped[item.category].push(`・${item.name} × ${buyQty}${item.unit}${item.note ? `（${item.note}）` : ''}`);
+      });
+      Object.keys(grouped).forEach(cat => {
+        lines.push(`\n■ ${cat}`);
+        lines.push(...grouped[cat]);
+      });
+      document.getElementById('shopping-preview-text').value = lines.join('\n');
+    }
+
+    function copyShoppingText() {
+      const text = document.getElementById('shopping-preview-text').value;
+      navigator.clipboard.writeText(text).then(() => showToast('📋 買い物リストをコピーしました！'));
+    }
+
+    function shareLineShopping() {
+      const text = encodeURIComponent(document.getElementById('shopping-preview-text').value);
+      window.open(`https://line.me/R/msg/text/?${text}`, '_blank');
+    }
+
+    function bulkRestockChecked() {
+      const checks = document.querySelectorAll('.shop-check:checked');
+      if (checks.length === 0) {
+        showToast('補充する品目にチェックを入れてください');
+        return;
+      }
+      let count = 0;
+      checks.forEach(chk => {
+        const id = chk.dataset.id;
+        const qtyInput = document.getElementById(`buy-qty-${id}`);
+        const addQty = parseInt(qtyInput ? qtyInput.value : 1, 10) || 1;
+        const item = items.find(i => i.id === id);
+        if (item) {
+          item.qty += addQty;
+          addLogEntry(item, '買出し補充', addQty, item.qty);
+          count++;
+        }
+      });
+      saveItemsToStorage();
+      refreshAll();
+      showToast(`✅ ${count}品目をまとめて在庫に補充しました！`);
+    }
+
+    // ==================== 履歴ログ描画 ====================
+    function renderHistoryList() {
+      const container = document.getElementById('history-list');
+      if (logs.length === 0) {
+        container.innerHTML = `<div class="py-8 text-center text-xs text-slate-400">まだ消費・補充の記録がありません</div>`;
+        return;
+      }
+      container.innerHTML = logs.map(log => {
+        const isPlus = log.delta > 0;
+        return `<div class="py-2.5 flex items-center justify-between gap-2 text-xs">
+          <div>
+            <div class="font-bold text-slate-800">${escapeHtml(log.itemName)}</div>
+            <div class="text-[11px] text-slate-400">${log.timestamp} ・ 👤 ${escapeHtml(log.member)}</div>
+          </div>
+          <div class="text-right shrink-0">
+            <span class="px-2 py-0.5 rounded-lg font-black ${isPlus ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">
+              ${isPlus ? '+' + log.delta : log.delta}${log.unit}
+            </span>
+            <div class="text-[10px] text-slate-400 mt-0.5">残 ${log.afterQty}${log.unit}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function clearHistoryLogs() {
+      if (!confirm('消費・補充の履歴ログをすべて消去しますか？')) return;
+      logs = [];
+      saveLogsToStorage();
+      renderHistoryList();
+      showToast('履歴をクリアしました');
+    }
+
+    // ==================== 品目追加・編集モーダル ====================
+    function openItemModal(id = null, presetBarcode = '') {
+      const form = document.getElementById('item-form');
+      form.reset();
+      document.getElementById('edit-item-id').value = id || '';
+      const delBtn = document.getElementById('btn-delete-item');
+
+      if (id) {
+        const item = items.find(i => i.id === id);
+        if (!item) return;
+        document.getElementById('item-modal-title').textContent = '✏️ 品目情報の編集';
+        document.getElementById('inp-name').value = item.name;
+        document.getElementById('inp-category').value = item.category;
+        document.getElementById('inp-location').value = item.location || '';
+        document.getElementById('inp-qty').value = item.qty;
+        document.getElementById('inp-min').value = item.min;
+        document.getElementById('inp-unit').value = item.unit || '個';
+        document.getElementById('inp-expiry').value = item.expiry || '';
+        document.getElementById('inp-barcode').value = item.barcode || '';
+        document.getElementById('inp-note').value = item.note || '';
+        delBtn.classList.remove('hidden');
+      } else {
+        document.getElementById('item-modal-title').textContent = '📦 新しい備品・食材を登録';
+        document.getElementById('inp-qty').value = 1;
+        document.getElementById('inp-min').value = 1;
+        document.getElementById('inp-unit').value = '個';
+        if (presetBarcode) document.getElementById('inp-barcode').value = presetBarcode;
+        delBtn.classList.add('hidden');
+      }
+      document.getElementById('item-modal').classList.remove('hidden');
+    }
+
+    function saveItem(e) {
+      e.preventDefault();
+      const id = document.getElementById('edit-item-id').value;
+      const data = {
+        name: document.getElementById('inp-name').value.trim(),
+        category: document.getElementById('inp-category').value,
+        location: document.getElementById('inp-location').value.trim(),
+        qty: parseInt(document.getElementById('inp-qty').value, 10) || 0,
+        min: parseInt(document.getElementById('inp-min').value, 10) || 0,
+        unit: document.getElementById('inp-unit').value.trim() || '個',
+        expiry: document.getElementById('inp-expiry').value,
+        barcode: document.getElementById('inp-barcode').value.trim(),
+        note: document.getElementById('inp-note').value.trim()
+      };
+
+      if (id) {
+        const idx = items.findIndex(i => i.id === id);
+        if (idx !== -1) items[idx] = { ...items[idx], ...data };
+        showToast(`「${data.name}」を更新しました`);
+      } else {
+        const newItem = { id: 'it-' + Date.now(), ...data };
+        items.unshift(newItem);
+        addLogEntry(newItem, '新規登録', data.qty, data.qty);
+        showToast(`「${data.name}」を登録しました`);
+      }
+
+      saveItemsToStorage();
+      closeModal('item-modal');
+      refreshAll();
+    }
+
+    function deleteCurrentItem() {
+      const id = document.getElementById('edit-item-id').value;
+      if (!id) return;
+      const item = items.find(i => i.id === id);
+      if (!confirm(`「${item.name}」をリストから削除しますか？`)) return;
+      items = items.filter(i => i.id !== id);
+      saveItemsToStorage();
+      closeModal('item-modal');
+      refreshAll();
+      showToast('削除しました');
+    }
+
+    // ==================== カメラバーコード・QR読取 ====================
+    function openScannerModal(mode) {
+      scannerMode = mode;
+      document.getElementById('scanner-title').textContent =
+        mode === 'register' ? '📷 商品のバーコードを読み取って登録' : '📷 バーコードスキャンで在庫検索・登録';
+      document.getElementById('manual-barcode-input').value = '';
+      document.getElementById('scanner-modal').classList.remove('hidden');
+
+      setTimeout(() => {
+        try {
+          html5QrCode = new Html5Qrcode("qr-reader");
+          html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 240, height: 140 } },
+            (decodedText) => {
+              handleScannedCode(decodedText);
+            },
+            () => {}
+          ).then(() => {
+            document.getElementById('scanner-status').textContent = '枠内に商品のJANバーコード・QRコードを映してください';
+          }).catch(() => {
+            document.getElementById('scanner-status').textContent = '※カメラを起動できませんでした。下の欄から手入力も可能です';
+          });
+        } catch (err) {
+          document.getElementById('scanner-status').textContent = '※この環境ではカメラが制限されています。下の欄から手入力できます';
+        }
+      }, 200);
+    }
+
+    function closeScannerModal() {
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
+        html5QrCode = null;
+      }
+      closeModal('scanner-modal');
+    }
+
+    function handleScannedCode(code) {
+      const trimmed = (code || '').trim();
+      if (!trimmed) return;
+      closeScannerModal();
+
+      if (scannerMode === 'register') {
+        document.getElementById('inp-barcode').value = trimmed;
+        showToast(`バーコード「${trimmed}」をセットしました`);
+        return;
+      }
+
+      const found = items.find(i => i.barcode === trimmed);
+      if (found) {
+        document.getElementById('search-input').value = found.name;
+        switchTab('stock');
+        renderStockList();
+        showToast(`✅「${found.name}」が見つかりました！`);
+      } else {
+        if (confirm(`未登録のバーコード（${trimmed}）です。\nこのまま新しい品目として登録しますか？`)) {
+          openItemModal(null, trimmed);
+        }
+      }
+    }
+
+    // ==================== 家族メンバー（記録者）管理 ====================
+    function openMemberModal() {
+      renderMemberList();
+      document.getElementById('member-modal').classList.remove('hidden');
+    }
+
+    function renderMemberList() {
+      const container = document.getElementById('member-list');
+      container.innerHTML = members.map(m => {
+        const active = m === currentMember;
+        return `<div class="flex items-center justify-between gap-2 p-2 rounded-xl border ${active ? 'bg-emerald-50 border-emerald-400' : 'bg-slate-50 border-slate-200'}">
+          <button onclick="selectMember('${escapeHtml(m)}')" class="flex-1 text-left text-xs font-black ${active ? 'text-emerald-800' : 'text-slate-700'}">
+            ${active ? '✅ ' : '👤 '}${escapeHtml(m)}
+          </button>
+          ${members.length > 1 ? `<button onclick="removeMember('${escapeHtml(m)}')" class="text-[11px] text-rose-500 px-2 py-1 font-bold">🗑️ 削除</button>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    function selectMember(name) {
+      currentMember = name;
+      localStorage.setItem(STORAGE_KEYS.CURRENT_MEMBER, name);
+      updateMemberLabel();
+      closeModal('member-modal');
+      showToast(`記録者を「${name}」に切り替えました`);
+    }
+
+    function addMember() {
+      const inp = document.getElementById('new-member-input');
+      const name = inp.value.trim();
+      if (!name) return;
+      if (!members.includes(name)) {
+        members.push(name);
+        localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+      }
+      inp.value = '';
+      selectMember(name);
+    }
+
+    function removeMember(name) {
+      members = members.filter(m => m !== name);
+      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+      if (currentMember === name) {
+        currentMember = members[0] || '家族';
+        localStorage.setItem(STORAGE_KEYS.CURRENT_MEMBER, currentMember);
+        updateMemberLabel();
+      }
+      renderMemberList();
+    }
+
+    function updateMemberLabel() {
+      document.getElementById('current-member-label').textContent = `記録者: ${currentMember}`;
+    }
+
+    // ==================== Googleスプレッドシート連携（GAS） ====================
+    function saveGasUrl() {
+      const url = document.getElementById('gas-url-input').value.trim();
+      localStorage.setItem(STORAGE_KEYS.GAS_URL, url);
+      showToast(url ? '☁️ スプレッドシート連携URLを保存しました' : '連携URLをクリアしました');
+    }
+
+    function sendLogToGas(entry) {
+      const url = localStorage.getItem(STORAGE_KEYS.GAS_URL);
+      if (!url) return;
+      fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'log', ...entry })
+      }).catch(() => {});
+    }
+
+    function syncAllToSheet() {
+      const url = localStorage.getItem(STORAGE_KEYS.GAS_URL);
+      if (!url) {
+        showToast('⚠️ 先にGAS ウェブアプリURLを入力・保存してください');
+        return;
+      }
+      fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'sync_master', items })
+      }).then(() => {
+        showToast('☁️ 現在庫データをスプレッドシートへ一括送信しました！');
+      }).catch(() => {
+        showToast('送信エラーが発生しました');
+      });
+    }
+
+    function copyGasCode() {
+      const code = `function doPost(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var data = JSON.parse(e.postData.contents);
+    if (data.type === 'log') {
+      var logSheet = ss.getSheetByName('消費補充ログ') || ss.insertSheet('消費補充ログ');
+      if (logSheet.getLastRow() === 0) {
+        logSheet.appendRow(['日時', '記録者', '品名', 'カテゴリ', '操作', '増減数', '変更後在庫', '単位']);
+      }
+      logSheet.appendRow([data.timestamp, data.member, data.itemName, data.category, data.action, data.delta, data.afterQty, data.unit]);
+    } else if (data.type === 'sync_master') {
+      var masterSheet = ss.getSheetByName('おうち現在庫') || ss.insertSheet('おうち現在庫');
+      masterSheet.clear();
+      masterSheet.appendRow(['品名', 'カテゴリ', '保管場所', '現在庫', '補充ライン', '単位', '状態', '賞味期限', 'JANコード', 'メモ']);
+      data.items.forEach(function(it) {
+        var st = it.qty === 0 ? '在庫ゼロ' : (it.qty <= it.min ? '要補充' : '十分');
+        masterSheet.appendRow([it.name, it.category, it.location, it.qty, it.min, it.unit, st, it.expiry, it.barcode, it.note]);
+      });
+    }
+    return ContentService.createTextOutput(JSON.stringify({status: 'ok'})).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: err.toString()})).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+      navigator.clipboard.writeText(code).then(() => showToast('📋 家庭用GASコードをコピーしました！'));
+    }
+
+    // ==================== CSV出力 & サンプル初期化 ====================
+    function exportCSV() {
+      const headers = ['品名', 'カテゴリ', '保管場所', '現在庫', '補充ライン', '単位', '賞味期限', 'JANコード', 'メモ'];
+      const rows = items.map(i => [i.name, i.category, i.location, i.qty, i.min, i.unit, i.expiry, i.barcode, i.note].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(','));
+      const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `おうちストック一覧_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      showToast('⬇️ CSVファイルをダウンロードしました');
+    }
+
+    function resetToSampleData() {
+      if (!confirm('現在のデータを家庭向けサンプル品目（牛乳・卵・トイレットペーパー等）に戻しますか？')) return;
+      items = JSON.parse(JSON.stringify(SAMPLE_ITEMS));
+      saveItemsToStorage();
+      closeModal('settings-modal');
+      refreshAll();
+      showToast('サンプル品目を読み込みました');
+    }
+
+    // ==================== UI ユーティリティ ====================
+    function switchTab(tab) {
+      currentTab = tab;
+      ['stock', 'shopping', 'history'].forEach(t => {
+        const view = document.getElementById('view-' + t);
+        const btn = document.getElementById('tab-' + t);
+        if (t === tab) {
+          view.classList.remove('hidden');
+          btn.className = 'py-2 rounded-xl text-xs sm:text-sm font-black bg-white text-emerald-700 shadow-sm transition';
+        } else {
+          view.classList.add('hidden');
+          btn.className = 'py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition';
+        }
+      });
+      if (tab === 'shopping') renderShoppingList();
+      if (tab === 'history') renderHistoryList();
+    }
+
+    function openSettingsModal() {
+      document.getElementById('settings-modal').classList.remove('hidden');
+    }
+
+    function openChangelogModal() {
+      document.getElementById('changelog-modal').classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.remove('opacity-0');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => t.classList.add('opacity-0'), 2400);
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, s => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[s]));
+    }
+
+    function setupBackToTop() {
+      const btn = document.getElementById('btn-back-to-top');
+      const checkScroll = () => {
+        const y = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
+        if (y > 80) {
+          btn.classList.remove('opacity-0', 'pointer-events-none');
+        } else {
+          btn.classList.add('opacity-0', 'pointer-events-none');
+        }
+      };
+      window.addEventListener('scroll', checkScroll, { passive: true });
+      window.addEventListener('touchmove', checkScroll, { passive: true });
+    }
+
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
